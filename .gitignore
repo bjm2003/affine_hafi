@@ -1,0 +1,57 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Experiment outputs (可能很大)
+experiments/
+!experiments/.gitkeep
+wandb/
+runs/
+lightning_logs/
+
+# Model checkpoints (可能很大)
+*.zip
+*.pt
+*.pth
+!baselines/**/models/**   # 允许 baseline 官方权重
+
+# CasADi JIT cache
+.casadi_cache/
+
+# Logs & videos
+logs/
+!logs/.gitkeep
+*.mp4
+*.avi
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.pem
+*_credentials.json

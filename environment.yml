@@ -1,0 +1,66 @@
+# affine_hafi conda environment definition
+#
+# Cross-platform (Windows dev + Ubuntu 20.04 train + Ubuntu 20.04 vehicle):
+#   conda env create -f environment.yml
+#   conda activate affine_hafi
+#
+# Update after adding deps:
+#   conda env update -f environment.yml --prune
+#
+# Note on CUDA:
+#   - 4060 supports CUDA 12.1+; PyTorch 2.2+ has cu121 build.
+#   - On CPU-only vehicles: replace pytorch-cuda with cpuonly.
+#     conda install pytorch cpuonly -c pytorch  (or comment out pytorch-cuda line below)
+
+name: affine_hafi
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  # ============ Core Python ============
+  - python=3.10
+  - pip
+
+  # ============ Scientific stack (conda for speed) ============
+  - numpy>=1.24,<2.0        # SB3 not yet fully compatible with numpy 2.x
+  - scipy>=1.11
+  - matplotlib>=3.7
+  - pandas>=2.0
+  - seaborn>=0.13
+
+  # ============ PyTorch (train machine uses CUDA; vehicle uses CPU) ============
+  - pytorch>=2.2,<2.5
+  - torchvision
+  - pytorch-cuda=12.1       # comment out on CPU-only vehicles → use cpuonly instead
+
+  # ============ Dev tools ============
+  - pytest>=7.4
+  - jupyterlab              # optional, for notebooks/
+
+  # ============ Pip-installed (packages preferred via pip) ============
+  - pip:
+      # RL / Env
+      - stable-baselines3>=2.1.0,<3.0
+      - gymnasium>=0.29.0
+
+      # MPC solver
+      - casadi>=3.6.0
+
+      # Config / logging
+      - pyyaml>=6.0
+      - tqdm>=4.65
+      - tensorboard>=2.14
+      - wandb>=0.16
+
+      # Method A specific: differentiable QP for projection layer
+      - cvxpy>=1.4
+      - cvxpylayers>=0.1.6
+
+      # Method B2 specific: GNN for decentralized comm
+      - torch-geometric>=2.4
+
+      # Dev
+      - black>=23.0

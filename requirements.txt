@@ -1,0 +1,44 @@
+# pip fallback (for machines without conda, or as reference for lock)
+#
+# **推荐用法**: conda env create -f environment.yml (跨平台一致)
+# 只有在没 conda 的机器上才用这份 requirements.txt
+#
+# Windows / Ubuntu 20.04 / 小车 全兼容 (小车用 CPU-only PyTorch)
+
+# ============ Scientific stack ============
+numpy>=1.24,<2.0
+scipy>=1.11
+matplotlib>=3.7.0
+pandas>=2.0
+seaborn>=0.13
+
+# ============ PyTorch ============
+# 训练机 (with CUDA 4060/3090/4090):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# CPU-only (小车 / 无 GPU 机器):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.2,<2.5
+
+# ============ RL / Env ============
+stable-baselines3>=2.1.0,<3.0
+gymnasium>=0.29.0
+
+# ============ MPC solver ============
+casadi>=3.6.0
+
+# ============ Config / logging ============
+pyyaml>=6.0
+tqdm>=4.65
+tensorboard>=2.14
+wandb>=0.16
+
+# ============ Method A specific ============
+cvxpy>=1.4
+cvxpylayers>=0.1.6
+
+# ============ Method B2 specific ============
+torch-geometric>=2.4
+
+# ============ Dev ============
+pytest>=7.4
+black>=23.0

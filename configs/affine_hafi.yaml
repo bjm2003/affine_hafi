@@ -1,0 +1,71 @@
+# Main method config: Affine Formation Manifold (Direction A)
+# Loaded by train/train.py
+
+method:
+  name: affine_hafi
+  action_type: affine_6d          # 6D (dx, dy, theta, s_x, s_y, kappa)
+
+  # Affine action bounds (see policies/affine_policy.py::decode_affine_action)
+  affine_theta_max: 1.5708        # ±90° rotation
+  affine_kappa_max: 0.5           # shear coefficient bound
+  # s_x, s_y bounds inherit from config.s_min / s_max
+
+  # Feasibility projection (C2)
+  enable_projection: true
+  projection_type: box            # {box, qp_linearized}  ← full QP in M2
+
+  # Emergent regularization (C3 fallback)
+  formation_entropy_weight: 0.0   # start at 0, enable if collapse observed
+
+# Environment
+env:
+  n_vehicles: 3
+  d_form: 0.8
+  scenario_probs:                 # 6 类 (matches config.train_scenario_probs)
+    open: 0.25
+    corridor: 0.15
+    s_corridor: 0.15
+    z_corridor: 0.15
+    u_trap: 0.15
+    dynamic: 0.15
+
+# PPO hyperparams (aligned with HAFI config.py)
+ppo:
+  total_timesteps: 3_000_000
+  n_envs: 12
+  n_steps: 8192
+  batch_size: 2048
+  n_epochs: 4
+  lr: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+
+# Curriculum (matches config.py fields)
+curriculum:
+  enabled: true
+  phase1_probs: [0.50, 0.10, 0.05, 0.05, 0.15, 0.15]
+  phase2_probs: [0.15, 0.15, 0.20, 0.20, 0.15, 0.15]
+  switch_step: 500_000
+  corridor_gap_start: 1.0
+  corridor_gap_target: 0.70
+  corridor_gap_warmup_frac: 0.05
+  corridor_gap_anneal_frac: 0.40
+
+# Failure replay
+failure_replay:
+  enabled: true
+  max_prob: 0.3
+  sr_low: 0.5
+  sr_high: 0.8
+  buffer_size: 200
+
+# Logging
+logging:
+  wandb: true
+  wandb_project: affine_hafi
+  wandb_entity: baijiaming46              # 用户 wandb 用户名，填入
+  eval_freq: 50_000
+  video_freq: 100_000
+  checkpoint_freq: 100_000

@@ -1,0 +1,57 @@
+# HAFI baseline reproduction config
+# Purpose: reproduce 师姐 HAFI on self-built Env (Gate G1)
+# Expected SR at L1/L2/L3: ~93.8% / ~91.8% / ~83.0%
+
+method:
+  name: hafi_baseline
+  action_type: hafi_3d            # 3D (dx, dy, scale)
+  enable_projection: false
+  formation_entropy_weight: 0.0
+
+env:
+  n_vehicles: 3
+  d_form: 0.8
+  scenario_probs:
+    open: 0.25
+    corridor: 0.15
+    s_corridor: 0.15
+    z_corridor: 0.15
+    u_trap: 0.15
+    dynamic: 0.15
+
+ppo:
+  total_timesteps: 1_500_000      # HAFI paper reports 1.5M
+  n_envs: 12
+  n_steps: 8192
+  batch_size: 2048
+  n_epochs: 4
+  lr: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+
+curriculum:
+  enabled: true
+  phase1_probs: [0.50, 0.10, 0.05, 0.05, 0.15, 0.15]
+  phase2_probs: [0.15, 0.15, 0.20, 0.20, 0.15, 0.15]
+  switch_step: 500_000
+  corridor_gap_start: 1.0
+  corridor_gap_target: 0.70
+  corridor_gap_warmup_frac: 0.05
+  corridor_gap_anneal_frac: 0.40
+
+failure_replay:
+  enabled: true
+  max_prob: 0.3
+  sr_low: 0.5
+  sr_high: 0.8
+  buffer_size: 200
+
+logging:
+  wandb: true
+  wandb_project: affine_hafi
+  wandb_entity: baijiaming46
+  eval_freq: 50_000
+  video_freq: 100_000
+  checkpoint_freq: 100_000
