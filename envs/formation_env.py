@@ -39,7 +39,9 @@ from envs.lidar_sim import simulate_lidar, derotate_lidar, lidar_to_spatial_dirs
 from envs.rewards import compute_reward, CORRIDOR_FAMILY
 from mpc.solver import MPCSolver
 from control.leader_node import LeaderNode
-from policies.affine_decode_np import decode_affine_action_np
+from policies.affine_decode_np import (
+    decode_affine_action_np, effective_isotropic_scale, project_affine_offsets_np,
+)
 
 
 CORRIDOR_LIKE_SCENARIOS = {"corridor", "s_corridor", "z_corridor", "curved_slot"}
@@ -59,6 +61,10 @@ class FormationEnv(gym.Env):
         entropy_weight: float = 0.0,
         affine_theta_max: float = np.pi / 2,
         affine_kappa_max: float = 0.5,
+        enable_projection: bool = True,
+        projection_clearance: Optional[float] = None,
+        projection_gamma_min: Optional[float] = None,
+        projection_gamma_steps: Optional[int] = None,
         render_mode: Optional[str] = None,
         seed: Optional[int] = None,
     ):
@@ -72,6 +78,20 @@ class FormationEnv(gym.Env):
         self.entropy_weight = float(entropy_weight)
         self.affine_theta_max = float(affine_theta_max)
         self.affine_kappa_max = float(affine_kappa_max)
+        # Feasibility-preserving projection (C2). Fall back to cfg defaults.
+        self.enable_projection = bool(enable_projection)
+        self.projection_clearance = float(
+            projection_clearance if projection_clearance is not None
+            else self.cfg.projection_clearance
+        )
+        self.projection_gamma_min = float(
+            projection_gamma_min if projection_gamma_min is not None
+            else self.cfg.projection_gamma_min
+        )
+        self.projection_gamma_steps = int(
+            projection_gamma_steps if projection_gamma_steps is not None
+            else self.cfg.projection_gamma_steps
+        )
         self.render_mode = render_mode
 
         # RNG (Gym reset() will re-seed)
@@ -131,6 +151,8 @@ class FormationEnv(gym.Env):
         self.prev_center: np.ndarray = np.zeros(2)
         self.last_subgoal: Optional[np.ndarray] = None
         self.last_affine_offsets: Optional[np.ndarray] = None  # for entropy reg
+        self._last_projection_gamma: float = 1.0
+        self._last_projection_active: bool = False
 
         # MPC solvers per vehicle (lazy init to defer JIT + avoid pickling issues)
         self._mpc_solvers: Optional[List[MPCSolver]] = None
@@ -198,6 +220,8 @@ class FormationEnv(gym.Env):
         self.prev_center = self.positions.mean(axis=0)
         self.last_subgoal = None
         self.last_affine_offsets = None
+        self._last_projection_gamma = 1.0
+        self._last_projection_active = False
 
         # 5. Reset MPC warm starts (if solvers built)
         if self._mpc_solvers is not None:
@@ -272,6 +296,8 @@ class FormationEnv(gym.Env):
             "current_scale": self.current_scale,
             "reward_components": components,
             "scenario_name": self._current_scenario_name,
+            "projection_gamma": self._last_projection_gamma,
+            "projection_active": self._last_projection_active,
             **substep_stats,
         }
         return obs, float(reward), terminated, truncated, info
@@ -334,11 +360,35 @@ class FormationEnv(gym.Env):
                 theta_max=self.affine_theta_max,
                 kappa_max=self.affine_kappa_max,
             )
+
+            # Feasibility-preserving projection (C2): shrink toward subgoal until
+            # every per-vehicle reference clears obstacles + arena bounds.
+            if self.enable_projection:
+                obstacles = [(o.pos, o.radius) for o in self.static_obs]
+                obstacles += [(o.pos, o.radius) for o in self.dynamic_obs]
+                arena = (
+                    self.current_scenario.arena_bounds
+                    if self.current_scenario is not None else None
+                )
+                affine_offsets, gamma, activated = project_affine_offsets_np(
+                    affine_offsets,
+                    subgoal,
+                    obstacles,
+                    vehicle_radius=self.cfg.vehicle_radius,
+                    d_safe=self.cfg.d_safe,
+                    clearance=self.projection_clearance,
+                    arena_bounds=arena,
+                    gamma_min=self.projection_gamma_min,
+                    gamma_steps=self.projection_gamma_steps,
+                )
+            else:
+                gamma, activated = 1.0, False
+            self._last_projection_gamma = float(gamma)
+            self._last_projection_active = bool(activated)
             self.last_affine_offsets = affine_offsets
 
-            # Effective isotropic scale (for reward + logging)
-            from policies.affine_decode_np import effective_isotropic_scale
-            eff_scale = effective_isotropic_scale(action, self.cfg)
+            # Effective isotropic scale (for reward + logging), post-projection
+            eff_scale = effective_isotropic_scale(action, self.cfg) * float(gamma)
 
             refs = subgoal[None, :] + affine_offsets
             return refs, float(eff_scale), subgoal

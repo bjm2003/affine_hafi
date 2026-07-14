@@ -40,7 +40,25 @@ if ! command -v conda >/dev/null 2>&1; then
     echo "  source ~/.bashrc"
     exit 1
 fi
-echo "[1/6] conda found: $(conda --version)"
+echo "[1/7] conda found: $(conda --version)"
+
+# ---------- 1b. Ensure libmamba solver (prevents OOM 'Killed' during solve) ----------
+# conda's classic SAT solver can exhaust RAM (OOM-killed) on multi-channel envs.
+# libmamba is C++-based, uses far less memory, and solves much faster.
+echo "[2/7] Ensuring fast dependency solver (libmamba)..."
+CONDA_BASE_EARLY=$(conda info --base)
+if python -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('conda_libmamba_solver') else 1)" 2>/dev/null \
+   || conda list -n base 2>/dev/null | grep -q "conda-libmamba-solver"; then
+    echo "       libmamba solver already installed"
+else
+    echo "       Installing conda-libmamba-solver into base env..."
+    conda install -n base -c conda-forge conda-libmamba-solver -y \
+        || echo "       [WARN] libmamba install failed; will fall back to --solver flag / classic"
+fi
+# Set as default solver (harmless if already set); tolerate old conda without this key.
+conda config --set solver libmamba 2>/dev/null \
+    || conda config --set experimental_solver libmamba 2>/dev/null \
+    || echo "       [WARN] could not persist solver setting; using per-command flag"
 
 # ---------- 2. Environment.yml check ----------
 if [[ ! -f "$REPO_ROOT/environment.yml" ]]; then
@@ -53,29 +71,36 @@ HAS_GPU=false
 if command -v nvidia-smi >/dev/null 2>&1; then
     if nvidia-smi >/dev/null 2>&1; then
         HAS_GPU=true
-        echo "[2/6] GPU detected:"
+        echo "[3/7] GPU detected:"
         nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader | sed 's/^/       /'
     fi
 fi
 if ! $HAS_GPU; then
-    echo "[2/6] No GPU detected — will install CPU-only PyTorch"
+    echo "[3/7] No GPU detected — will install CPU-only PyTorch"
     echo "       (If you have a GPU, install nvidia driver + CUDA 12.1 then re-run)"
 fi
 
 # ---------- 4. Create / update conda env ----------
+# --solver libmamba is passed explicitly so this works even if the config
+# write above was rejected by an older conda.
+SOLVER_FLAG="--solver libmamba"
+# Older conda (<23.9) doesn't accept --solver on env subcommands; probe once.
+if ! conda env create --help 2>/dev/null | grep -q -- "--solver"; then
+    SOLVER_FLAG=""
+fi
 if conda env list | grep -qE "^affine_hafi\s"; then
-    echo "[3/6] Env 'affine_hafi' exists; updating from environment.yml..."
-    conda env update -n affine_hafi -f environment.yml --prune
+    echo "[4/7] Env 'affine_hafi' exists; updating from environment.yml..."
+    conda env update -n affine_hafi -f environment.yml --prune $SOLVER_FLAG
 else
-    echo "[3/6] Creating env 'affine_hafi' from environment.yml..."
+    echo "[4/7] Creating env 'affine_hafi' from environment.yml..."
     if $HAS_GPU; then
-        conda env create -f environment.yml
+        conda env create -f environment.yml $SOLVER_FLAG
     else
         # CPU-only variant: strip pytorch-cuda from env
         TMP_YML=$(mktemp)
         # Filter out the pytorch-cuda dependency line
         grep -v "pytorch-cuda" environment.yml > "$TMP_YML"
-        conda env create -n affine_hafi -f "$TMP_YML"
+        conda env create -n affine_hafi -f "$TMP_YML" $SOLVER_FLAG
         rm -f "$TMP_YML"
         echo "       (Installed CPU-only PyTorch; edit environment.yml if you get GPU later)"
     fi
@@ -88,7 +113,7 @@ CONDA_BASE=$(conda info --base)
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 conda activate affine_hafi
 
-echo "[4/6] Verifying PyTorch install..."
+echo "[5/7] Verifying PyTorch install..."
 python -c "
 import torch
 print(f'  torch {torch.__version__}, cuda_available={torch.cuda.is_available()}')
@@ -97,13 +122,13 @@ if torch.cuda.is_available():
     print(f'  cuda: {torch.version.cuda}')
 "
 
-echo "[5/6] Verifying MPC solver..."
+echo "[6/7] Verifying MPC solver..."
 if ! python scripts/verify_mpc_offline.py; then
     echo "[FATAL] MPC solver verification failed"
     exit 3
 fi
 
-echo "[6/6] Running fast test suite..."
+echo "[7/7] Running fast test suite..."
 if ! pytest tests/ -v --tb=short -q; then
     echo "[FATAL] pytest failed"
     exit 4

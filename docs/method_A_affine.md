@@ -45,7 +45,10 @@ $$\hat{z}_t = \arg\min_{z' \in \mathbb{R}^6} \|z' - z_t\|_M^2 \quad \text{s.t.} 
 
 **Proposition 1 (待证)**: 若 policy 输出 $z_t$ 使某车 nominal reference $\mathbf{p}_i^{\text{ref}} = \mathcal{D}_i(z_t) + \mathbf{p}_c^{\text{ref}}$ 落在 $\mathbf{p}_c^{\text{ref}}$ 附近的 free-space cluster 内，则投影 $\hat{z}_t$ 保证下层 MPC 有 non-slack 解，且 $\|\hat{z}_t - z_t\| \leq \epsilon(s_t)$。
 
-**实现方式**: differentiable QP (cvxpylayers)，梯度可反传到 policy。
+**实现方式（pilot）**: 上式的一般形是逐障碍半平面约束的 QP。我们证明并实现其沿"尺寸轴"的 **1-D 特化 —— 最小各向同性收缩** $\gamma^\star = \max\{\gamma\in(0,1]: \forall i,\ \mathbf{p}_c^{\text{ref}} + \gamma\,\mathcal{D}_i(z_t)\in\mathcal{F}_i\}$，闭式、可微、保持策略选定的朝向/长宽比。
+- numpy 精确版 `project_affine_offsets_np`（真值障碍几何）在 env rollout 时强制可行性；
+- torch 可微版 `FeasibilityProjectionLayer`（垂直路径自由半宽约束）供 C2 消融与 differentiable-MPC。
+- 完整 cvxpylayers QP 作为严格泛化留作对比/附录（见 `docs/decisions.md` 决策 8）。
 
 **风险**: $\mathcal{F}_i$ 显式近似是难点，可从 velocity-space CBF 或 free-space clustering 出发；如果 tight version 证不下来，退到"probabilistic feasibility with bounded slack"。
 

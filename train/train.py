@@ -55,6 +55,7 @@ def make_env_fn(
     entropy_weight: float,
     affine_theta_max: float,
     affine_kappa_max: float,
+    enable_projection: bool,
     rank: int,
     base_seed: int,
 ) -> Callable:
@@ -69,6 +70,7 @@ def make_env_fn(
             entropy_weight=entropy_weight,
             affine_theta_max=affine_theta_max,
             affine_kappa_max=affine_kappa_max,
+            enable_projection=enable_projection,
             seed=base_seed + rank * 1000,
         )
         return env
@@ -96,6 +98,7 @@ def main():
     entropy_weight = float(method_cfg.get("formation_entropy_weight", 0.0))
     affine_theta_max = float(method_cfg.get("affine_theta_max", np.pi / 2))
     affine_kappa_max = float(method_cfg.get("affine_kappa_max", 0.5))
+    enable_projection = bool(method_cfg.get("enable_projection", True))
 
     # ============ Set up experiment directory ============
     stamp = args.exp_name or datetime.now().strftime("run_%Y%m%d_%H%M%S")
@@ -138,6 +141,7 @@ def main():
             entropy_weight=entropy_weight,
             affine_theta_max=affine_theta_max,
             affine_kappa_max=affine_kappa_max,
+            enable_projection=enable_projection,
             rank=i,
             base_seed=args.seed,
         )
@@ -161,6 +165,7 @@ def main():
             entropy_weight=entropy_weight,
             affine_theta_max=affine_theta_max,
             affine_kappa_max=affine_kappa_max,
+            enable_projection=enable_projection,
             rank=0,
             base_seed=args.seed + 100_000,
         )

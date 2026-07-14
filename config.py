@@ -81,6 +81,17 @@ class Config:
     s_max: float = 1.5                # 最大缩放因子
     max_delta_s: float = 0.5       # 每 RL 步最大缩放变化量 (与 20260419_194200 对齐)
 
+    # ===================== Affine 编队 + 可行性投影 (方法 A / C2) =====================
+    # 6D affine action 解码边界 (见 policies/affine_policy.py)
+    affine_theta_max: float = np.pi / 2   # 旋转边界 (±rad)
+    affine_kappa_max: float = 0.5         # 剪切系数边界
+    formation_entropy_weight: float = 0.0 # 编队熵正则权重 (0=关, 观察到坍缩再开)
+    # 可行性保持投影 (C2): 各向同性收缩使每车参考落在无碰撞可行域内
+    enable_projection: bool = True        # 消融开关 (C2 on/off)
+    projection_clearance: float = 0.05    # 参考点相对障碍的额外余量 (m), 叠加在 d_safe 上
+    projection_gamma_min: float = 0.2     # 最小收缩因子 (下界, 防止编队坍缩为点)
+    projection_gamma_steps: int = 6       # 收缩因子线搜索格点数
+
     # ===================== 参考轨迹平滑 =====================
     # 非对称代价下约束: α > v_max/(R0+v_max) = 0.375 即可保证 d_ss > 0
     # α=0.50: d_ss = R0 − (1−α)/α × v_max = 0.5 − 1.0×0.3 = 0.20m (更平滑, 编队误差更小)

@@ -70,6 +70,83 @@ def decode_affine_action_np(
     return D_z
 
 
+def project_affine_offsets_np(
+    affine_offsets: np.ndarray,          # (N, 2) A(z) · d_i^0 (no translation)
+    subgoal: np.ndarray,                 # (2,) subgoal center p_c^ref
+    obstacles,                           # list[(pos(2,), radius)]
+    vehicle_radius: float,
+    d_safe: float,
+    clearance: float = 0.05,
+    arena_bounds=None,                   # (xmin, xmax, ymin, ymax) or None
+    gamma_min: float = 0.2,
+    gamma_steps: int = 6,
+):
+    """Feasibility-preserving projection of a decoded affine formation (C2).
+
+    We seek the *largest* isotropic contraction gamma ∈ (0, 1] such that every
+    per-vehicle reference
+
+        p_i^ref(gamma) = subgoal + gamma · (A(z) · d_i^0)
+
+    lies in the per-vehicle feasible set F_i:
+        - clear of every obstacle by (r_obs + r_veh + d_safe + clearance)
+        - inside the arena half-planes (inflated inward by r_veh), if defined
+
+    Isotropic contraction toward the subgoal preserves the formation
+    orientation / aspect ratio the policy chose while shrinking its size just
+    enough to fit — exactly the emergent "squeeze through the gap" behavior we
+    want, and it gives a hard feasibility guarantee at the intention level
+    (before MPC), which reduces downstream MPC infeasibility.
+
+    Returns
+    -------
+    projected_offsets : (N, 2)   gamma · affine_offsets
+    gamma : float                contraction factor applied (1.0 = untouched)
+    activated : bool             True if gamma < 1 (projection did something)
+    """
+    affine_offsets = np.asarray(affine_offsets, dtype=np.float64)
+    subgoal = np.asarray(subgoal, dtype=np.float64).reshape(2)
+
+    # Fast path: nothing to constrain against.
+    if not obstacles and arena_bounds is None:
+        return affine_offsets, 1.0, False
+
+    min_clear = float(vehicle_radius) + float(d_safe) + float(clearance)
+
+    obs_pos = [np.asarray(p, dtype=np.float64).reshape(2) for (p, _r) in obstacles]
+    obs_rad = [float(r) for (_p, r) in obstacles]
+
+    def _feasible(gamma: float) -> bool:
+        refs = subgoal[None, :] + gamma * affine_offsets  # (N, 2)
+        for ref in refs:
+            for opos, orad in zip(obs_pos, obs_rad):
+                if float(np.linalg.norm(ref - opos)) < orad + min_clear:
+                    return False
+            if arena_bounds is not None:
+                xmin, xmax, ymin, ymax = arena_bounds
+                if not (
+                    xmin + vehicle_radius <= ref[0] <= xmax - vehicle_radius
+                    and ymin + vehicle_radius <= ref[1] <= ymax - vehicle_radius
+                ):
+                    return False
+        return True
+
+    # Decreasing geometric grid 1.0 → gamma_min; take the largest feasible.
+    if gamma_steps <= 1:
+        grid = [1.0]
+    else:
+        gamma_min = float(np.clip(gamma_min, 1e-3, 1.0))
+        ratio = gamma_min ** (1.0 / (gamma_steps - 1))
+        grid = [ratio ** k for k in range(gamma_steps)]  # [1.0, ..., gamma_min]
+
+    for g in grid:
+        if _feasible(g):
+            return g * affine_offsets, float(g), bool(g < 1.0 - 1e-9)
+
+    # No grid point feasible (subgoal itself likely blocked) — best effort.
+    return gamma_min * affine_offsets, float(gamma_min), True
+
+
 def effective_isotropic_scale(z: np.ndarray, cfg) -> float:
     """Convenience: return an "effective scale" scalar for reward + logging.
 

@@ -51,7 +51,7 @@ failure_replay:
 logging:
   wandb: true
   wandb_project: affine_hafi
-  wandb_entity: baijiaming46
+  wandb_entity:                    # 留空=用登录账号默认 entity；填错的 entity 会 CommError
   eval_freq: 50_000
   video_freq: 100_000
   checkpoint_freq: 100_000

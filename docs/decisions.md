@@ -131,3 +131,30 @@
 - PyTorch 2.2-2.4 + CUDA 12.1（4060 原生支持）
 - numpy < 2.0（SB3 兼容性）
 - stable-baselines3 2.1-3.0（与部署包权重加载兼容）
+
+---
+
+## 2026-07-14 —— M2 决策
+
+### 决策 8: 可行性投影用"最小各向同性收缩"，不用 cvxpylayers QP
+**Options**:
+- (a) 可微 QP（cvxpylayers，逐障碍半平面约束）— 原 M2 plan 写法
+- (b) 最小各向同性收缩 γ（沿 subgoal 收缩，直到每车参考清空障碍）← **选中**
+- (c) SDP 松弛 / 学习式投影
+
+**Reason**:
+- **SB3 PPO 结构限制**: 动作在 rollout 时采样（numpy detach），策略更新用 `evaluate_actions` 重算 log_prob，不重跑 env。采样后再做确定性投影会破坏 log_prob 一致性（类似 SAC tanh 需 Jacobian 修正），QP 投影塞进 PPO 既脆弱又慢（每 forward 解一次 QP）。
+- **各向同性收缩是 QP 的 1-D 特化**（沿"尺寸轴"），有闭式解、可微、O(N·n_obs)，且直接产生 killer 场景要的"缩小编队钻缝"涌现行为。
+- 保留可解释性：收缩保持策略选的朝向 / 长宽比，只缩尺寸。
+
+**实现**（镜像 affine decoder 的 torch+numpy 双份模式）:
+- `policies/affine_decode_np.py::project_affine_offsets_np` — numpy 精确版（有真值障碍几何），在 `FormationEnv._decode_action` 里 rollout 时强制可行性。
+- `policies/projection_layer.py::FeasibilityProjectionLayer` — torch 可微版（垂直路径自由半宽 w_allow 约束），供 C2 消融 + 未来 differentiable-MPC。
+- 消融开关 `enable_projection`（method block + Config），wandb 记 `custom/projection_active_rate` + `custom/mean_projection_gamma`。
+
+**Trade-off**: 论文里 QP 作为"严格泛化 / 附录"，主线用收缩。若 reviewer 质疑 novelty 不够，再补 QP 变体做对比。
+
+### 决策 9: Ubuntu conda 环境必须用 libmamba solver
+**问题**: conda 23.9.0 经典 SAT solver 在 4 channel + 多版本 pin 下"Solving environment"时被 OOM killer 杀掉（`已杀死`）。
+**方案**: `setup_ubuntu.sh` 先装 `conda-libmamba-solver` 并 `--set solver libmamba`（C++ 版，内存低 10-100×），env create 传 `--solver libmamba` 兜底。
+**How to apply**: 任何 Ubuntu 首次部署都走更新后的 `setup_ubuntu.sh`；手动修复见 `docs/ubuntu_training.md` 常见错误段。

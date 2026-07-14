@@ -53,26 +53,40 @@ nvidia-smi --query-gpu=name,memory.used,memory.total --format=csv,noheader 2>/de
 echo "==============================================="
 echo ""
 
-# nohup + tee → keeps running if user disconnects SSH, but logs visible live
-nohup python -u train/train.py \
-    --config "$CONFIG" \
-    --n_envs "$N_ENVS" \
-    --device "$DEVICE" \
-    --seed "$SEED" \
-    --exp_name "$EXP_NAME" \
-    $TOTAL_ARG \
-    > "$LOG_FILE" 2>&1 &
+if [[ "${BACKGROUND:-0}" == "1" ]]; then
+    # Background mode: survives SSH disconnect, logs to file only.
+    nohup python -u train/train.py \
+        --config "$CONFIG" \
+        --n_envs "$N_ENVS" \
+        --device "$DEVICE" \
+        --seed "$SEED" \
+        --exp_name "$EXP_NAME" \
+        $TOTAL_ARG \
+        > "$LOG_FILE" 2>&1 &
+    TRAIN_PID=$!
+    echo "$TRAIN_PID" > "$LOG_DIR/train.pid"
+    echo "Training started in BACKGROUND with PID $TRAIN_PID"
+    echo ""
+    echo "Monitor with:"
+    echo "  tail -f $LOG_FILE"
+    echo "Kill with:"
+    echo "  kill $TRAIN_PID  # or: kill \$(cat $LOG_DIR/train.pid)"
+else
+    # Foreground mode (default): live output in this terminal + saved to log.
+    # Ctrl-C stops training. Use SSH tmux/screen if you need disconnect safety.
+    echo "Running in FOREGROUND (Ctrl-C to stop). Set BACKGROUND=1 to detach."
+    echo "  Live output also saved to: $LOG_FILE"
+    echo ""
+    python -u train/train.py \
+        --config "$CONFIG" \
+        --n_envs "$N_ENVS" \
+        --device "$DEVICE" \
+        --seed "$SEED" \
+        --exp_name "$EXP_NAME" \
+        $TOTAL_ARG \
+        2>&1 | tee "$LOG_FILE"
+fi
 
-TRAIN_PID=$!
-echo "Training started with PID $TRAIN_PID"
-echo "$TRAIN_PID" > "$LOG_DIR/train.pid"
-echo ""
-echo "Monitor with:"
-echo "  tail -f $LOG_FILE"
-echo "  # or wandb dashboard: https://wandb.ai/baijiaming46/affine_hafi"
-echo ""
-echo "Kill with:"
-echo "  kill $TRAIN_PID  # or: kill \$(cat $LOG_DIR/train.pid)"
 echo ""
 echo "After training, evaluate with:"
 echo "  python eval/eval.py --run experiments/$EXP_NAME --tiers L1,L2,L3"

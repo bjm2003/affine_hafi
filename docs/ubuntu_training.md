@@ -40,6 +40,12 @@ bash scripts/setup_ubuntu.sh
 
 **常见错误**：
 - `conda not found` → 装 miniconda 后 `source ~/.bashrc`
+- **`Solving environment` 时被 `已杀死 / Killed`（exit 137/OOM）** → conda 经典 SAT solver 吃内存被 OOM killer 干掉。`setup_ubuntu.sh` 现在会先自动装 `libmamba` solver（C++，内存占用低 10-100×）。若手动修复：
+  ```bash
+  conda install -n base -c conda-forge conda-libmamba-solver -y
+  conda config --set solver libmamba
+  bash scripts/setup_ubuntu.sh   # 重跑即可
+  ```
 - `MPC verify failed` → 一般是 CasADi 版本冲突，删 env 重装：`conda env remove -n affine_hafi && bash scripts/setup_ubuntu.sh`
 - `pytest failed` → 报 error 贴给 Claude debug
 

@@ -10,9 +10,12 @@ method:
   affine_kappa_max: 0.5           # shear coefficient bound
   # s_x, s_y bounds inherit from config.s_min / s_max
 
-  # Feasibility projection (C2)
+  # Feasibility-preserving projection (C2): minimal isotropic contraction of the
+  # affine formation until every per-vehicle reference clears obstacles + arena.
   enable_projection: true
-  projection_type: box            # {box, qp_linearized}  ← full QP in M2
+  projection_clearance: 0.05      # extra margin (m) on top of d_safe
+  projection_gamma_min: 0.2       # floor on contraction (prevents collapse to a point)
+  projection_gamma_steps: 6       # line-search grid resolution
 
   # Emergent regularization (C3 fallback)
   formation_entropy_weight: 0.0   # start at 0, enable if collapse observed
@@ -65,7 +68,7 @@ failure_replay:
 logging:
   wandb: true
   wandb_project: affine_hafi
-  wandb_entity: baijiaming46              # 用户 wandb 用户名，填入
+  wandb_entity:                           # 留空=用登录账号默认 entity；填错会 CommError
   eval_freq: 50_000
   video_freq: 100_000
   checkpoint_freq: 100_000

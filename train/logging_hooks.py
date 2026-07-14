@@ -77,6 +77,9 @@ class CustomMetricsCallback(BaseCallback):
         self._feasibility_n = 0
         self._scale_sum = 0.0
         self._scale_n = 0
+        self._proj_gamma_sum = 0.0
+        self._proj_active_n = 0
+        self._proj_n = 0
         self._reward_comp_sum: Dict[str, float] = {}
         self._reward_comp_n: int = 0
 
@@ -92,6 +95,11 @@ class CustomMetricsCallback(BaseCallback):
             if "current_scale" in info:
                 self._scale_sum += float(info["current_scale"])
                 self._scale_n += 1
+            if "projection_gamma" in info:
+                self._proj_gamma_sum += float(info["projection_gamma"])
+                self._proj_n += 1
+                if bool(info.get("projection_active", False)):
+                    self._proj_active_n += 1
             comp = info.get("reward_components", {})
             for k, v in comp.items():
                 self._reward_comp_sum[k] = self._reward_comp_sum.get(k, 0.0) + float(v)
@@ -130,6 +138,15 @@ class CustomMetricsCallback(BaseCallback):
             self.logger.record(
                 "custom/mean_current_scale",
                 self._scale_sum / self._scale_n,
+            )
+        if self._proj_n > 0:
+            self.logger.record(
+                "custom/projection_active_rate",
+                self._proj_active_n / self._proj_n,
+            )
+            self.logger.record(
+                "custom/mean_projection_gamma",
+                self._proj_gamma_sum / self._proj_n,
             )
         if self._reward_comp_n > 0:
             for k, v in self._reward_comp_sum.items():
