@@ -101,6 +101,8 @@ pip install -r requirements.txt
 
 **多机部署详情**：见 [docs/env_setup.md](docs/env_setup.md)（Windows dev / Ubuntu train / Ubuntu vehicle 三端配置）
 
+**Ubuntu 训练机启动**：见 [docs/ubuntu_training.md](docs/ubuntu_training.md)（clone → setup → 训练 → 评估 → 权重同步回部署包）
+
 ---
 
 ## 方法文档
