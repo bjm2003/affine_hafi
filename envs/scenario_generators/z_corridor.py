@@ -18,10 +18,16 @@ from .base import BaseScenario, ScenarioInstance, ObstacleStatic
 class ZCorridorScenario(BaseScenario):
     name = "z_corridor"
 
+    def __init__(self, gap_width: float = None):
+        self.gap_width = gap_width
+
     def sample(self, rng: np.random.Generator, cfg) -> ScenarioInstance:
         world_half = cfg.world_size / 2.0
 
-        gap = float(rng.uniform(cfg.corridor_gap_target, cfg.corridor_gap_start))
+        if self.gap_width is not None:
+            gap = float(self.gap_width)
+        else:
+            gap = float(rng.uniform(cfg.corridor_gap_target, cfg.corridor_gap_start))
         seg_len = float(rng.uniform(2.0, 3.0))
 
         # Base orientation (Z bends 90° from this)

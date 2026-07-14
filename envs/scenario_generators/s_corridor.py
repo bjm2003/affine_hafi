@@ -18,10 +18,16 @@ from .base import BaseScenario, ScenarioInstance, ObstacleStatic
 class SCorridorScenario(BaseScenario):
     name = "s_corridor"
 
+    def __init__(self, gap_width: float = None):
+        self.gap_width = gap_width
+
     def sample(self, rng: np.random.Generator, cfg) -> ScenarioInstance:
         world_half = cfg.world_size / 2.0
 
-        gap = float(rng.uniform(cfg.corridor_gap_target, cfg.corridor_gap_start))
+        if self.gap_width is not None:
+            gap = float(self.gap_width)
+        else:
+            gap = float(rng.uniform(cfg.corridor_gap_target, cfg.corridor_gap_start))
         offset = float(rng.uniform(1.0, 1.8))  # lateral shift between two gaps
         seg_len = 2.5                           # length of each corridor segment
 
