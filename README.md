@@ -2,7 +2,7 @@
 
 **Structured Formation Intention Learning: Continuous Affine Manifolds with Safety-Guaranteed Distributed MPC**
 
-Research project extending HAFI (师姐 CoRL 2026 投稿) to learn team-level formation intention on a 6D SE(2) affine manifold, with a feasibility-preserving projection layer to the MPC feasible domain.
+Research project extending HAFI to learn team-level formation intention on a 6D SE(2) affine manifold, with a feasibility-preserving projection layer to the MPC feasible domain.
 
 Also hosts a parallel backup direction (方向 B2): Communication-Robust Decentralized Formation Intention.
 
@@ -123,7 +123,7 @@ pip install -r requirements.txt
 
 ## 关键决策
 
-- **不依赖师姐训练仓库**（用户选择独立性优先）
+- **不依赖训练仓库**（用户选择独立性优先）
 - **MPC solver 拷贝独立演进**（不 import 部署包）
 - **Env 从零搭**（基于 config.py 规格）
 - **B2 并行小步推进**（M3 之前不占主要资源）
