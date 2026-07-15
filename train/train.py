@@ -125,13 +125,26 @@ def main():
     from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 
     # Initial scenario probs (curriculum will override on training start)
+    scenario_order = ["open", "corridor", "s_corridor", "z_corridor", "u_trap", "dynamic"]
     train_scenario_probs = {
-        name: float(p)
-        for name, p in zip(
-            ["open", "corridor", "s_corridor", "z_corridor", "u_trap", "dynamic"],
-            cfg.train_scenario_probs,
-        )
+        name: float(p) for name, p in zip(scenario_order, cfg.train_scenario_probs)
     }
+
+    # Eval env distribution: use the curriculum's mature-phase mix (phase2) so
+    # best_model selection is scored on scenarios the policy actually trains on.
+    # The training_env gets phase2 via the curriculum callback, but the eval_env
+    # is never touched by it — without this it would keep the Config default,
+    # which for the isotropic baseline includes 15% unsolvable u_trap and just
+    # injects noise into best_model selection. Falls back to the training mix
+    # when no curriculum phase2 is configured.
+    curriculum_cfg = extras.get("curriculum", {})
+    phase2_probs = curriculum_cfg.get("phase2_probs")
+    if curriculum_cfg.get("enabled", False) and phase2_probs:
+        eval_scenario_probs = {
+            name: float(p) for name, p in zip(scenario_order, phase2_probs)
+        }
+    else:
+        eval_scenario_probs = train_scenario_probs
 
     env_fns = [
         make_env_fn(
@@ -161,7 +174,7 @@ def main():
     eval_env = DummyVecEnv([
         make_env_fn(
             cfg=cfg, action_type=action_type,
-            scenario_probs=train_scenario_probs,
+            scenario_probs=eval_scenario_probs,
             entropy_weight=entropy_weight,
             affine_theta_max=affine_theta_max,
             affine_kappa_max=affine_kappa_max,

@@ -12,12 +12,12 @@ env:
   n_vehicles: 3
   d_form: 0.8
   scenario_probs:
-    open: 0.25
-    corridor: 0.15
+    open: 0.30
+    corridor: 0.20
     s_corridor: 0.15
     z_corridor: 0.15
-    u_trap: 0.15
-    dynamic: 0.15
+    u_trap: 0.00           # unsolvable for isotropic HAFI → excluded from baseline TRAINING
+    dynamic: 0.20
 
 ppo:
   total_timesteps: 1_500_000      # HAFI paper reports 1.5M
@@ -33,8 +33,12 @@ ppo:
 
 curriculum:
   enabled: true
-  phase1_probs: [0.50, 0.10, 0.05, 0.05, 0.15, 0.15]
-  phase2_probs: [0.15, 0.15, 0.20, 0.20, 0.15, 0.15]
+  # scenario order: [open, corridor, s_corridor, z_corridor, u_trap, dynamic]
+  # u_trap slot (index 4) held at 0.0: isotropic HAFI cannot back out of a U-trap,
+  # so it is UNSOLVABLE for the baseline. It stays in EVAL (L3) as the affine
+  # killer-scenario motivator, but training on it only injects unlearnable episodes.
+  phase1_probs: [0.50, 0.15, 0.10, 0.10, 0.00, 0.15]
+  phase2_probs: [0.20, 0.20, 0.20, 0.20, 0.00, 0.20]
   switch_step: 500_000
   corridor_gap_start: 1.0
   corridor_gap_target: 0.70
@@ -42,7 +46,9 @@ curriculum:
   corridor_gap_anneal_frac: 0.40
 
 failure_replay:
-  enabled: true
+  enabled: false           # DISABLED for baseline repro: SR-EMA reweighting pinned the
+                           # unsolvable u_trap at max_prob and starved solved scenarios
+                           # (open/dynamic crushed to ~3% of episodes → Gate G1 miss).
   max_prob: 0.3
   sr_low: 0.5
   sr_high: 0.8
