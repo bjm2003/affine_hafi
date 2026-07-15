@@ -38,11 +38,15 @@ class SequentialDoorwaysScenario(BaseScenario):
         wall_r = 0.12
         obs_spacing = 2 * wall_r + 0.05
 
-        # Center each door on x-axis. Successive doors rotate by 45°.
+        # Center each door on x-axis. Successive doors tilt progressively so the
+        # formation must reorient/shear for each. Capped below 90°: a 90°-tilted
+        # door on a straight x-axis path lays its wall ALONG the travel line and
+        # would swallow the goal. 0/30/60° keeps every gap crossable and the goal
+        # clear while still forcing reorientation (0.6m gap < 0.8m formation width).
         static_obs = []
         door_positions = []
         for i in range(n):
-            angle = i * (np.pi / 4)   # 0, 45°, 90° for 3 doors
+            angle = i * (np.pi / 6)   # 0, 30°, 60° for 3 doors
             door_center = np.array([i * spacing, 0.0])
             door_positions.append((door_center, angle))
             axis = np.array([np.cos(angle), np.sin(angle)])

@@ -37,13 +37,17 @@ class UTrapScenario(BaseScenario):
         forward = np.array([np.cos(theta), np.sin(theta)])
         right = np.array([np.sin(theta), -np.cos(theta)])
 
-        # Trap center
-        trap_center = np.zeros(2)
+        # Trap center + start/goal. Center the start->goal span on the origin so
+        # both endpoints and the trap stay inside [-world_half, world_half].
+        # Anchoring the trap at the origin pushed goals (dist_along up to 10m)
+        # outside the world -> same unreachable-goal bug as base.py.
+        dist_along = float(rng.uniform(*cfg.start_distance_range))
+        back_offset = 0.3 * trap_depth
+        trap_center = -0.5 * (dist_along - back_offset) * forward
 
         # Start inside trap (near back wall, opening faces -forward)
-        start_center = trap_center - 0.3 * trap_depth * forward
+        start_center = trap_center - back_offset * forward
         # Goal in +forward direction, well past the trap opening
-        dist_along = float(rng.uniform(*cfg.start_distance_range))
         goal = trap_center + dist_along * forward
 
         # Build walls: back + left + right (opening on -forward side)
