@@ -70,10 +70,14 @@ class BaseScenario:
         dist = rng.uniform(lo, hi)
         angle = rng.uniform(-np.pi, np.pi)
         direction = np.array([np.cos(angle), np.sin(angle)])
-        # Center start at origin, goal in random direction
-        # (Later scenarios override to place in structured world)
-        start_center = np.zeros(2)
-        goal = start_center + dist * direction
+        # Center the start-goal segment on the origin so both endpoints stay
+        # inside the [-world_half, world_half] arena (a 6-10m traverse fits a
+        # 12m world only when centered). Matches every structured scenario
+        # (corridor/s_corridor/... all use ±0.5*dist*axis). Anchoring start at
+        # the origin instead pushes goals outside the world -> unreachable.
+        half = dist / 2.0
+        start_center = -half * direction
+        goal = half * direction
         return start_center, goal
 
     @staticmethod

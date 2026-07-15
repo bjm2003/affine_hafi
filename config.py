@@ -100,7 +100,7 @@ class Config:
 
     # ===================== MPC =====================
     mpc_horizon: int = 10             # MPC 预测步长 H (与 20260419_194200 对齐)
-    v_max: float = 0.1                # 速度上限 (m/s), 每RL步最大位移0.30m
+    v_max: float = 0.3                # 速度上限 (m/s); 单轴每RL步位移 v_max*dt_rl=0.15m, 每episode≤22.5m (目标6-10m可达)
     vehicle_radius: float = 0.18      # 车辆外接圆半径 (m), 20×30cm 车的外接圆
     d_safe: float = 0.15              # 额外安全余量 (m), 与 wandb 20260414 对齐
     # --- MPC + 非对称纵向代价 + 滑动参考 ---

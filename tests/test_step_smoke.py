@@ -131,20 +131,20 @@ def test_lazy_solver_init():
 # ============================================================
 #  Greedy goal-reaching (open scenario should be trivially solvable)
 # ============================================================
-def test_open_scenario_makes_progress_with_greedy_policy():
-    """A greedy 'point toward goal' policy should make substantial progress.
+def test_open_scenario_reaches_goal_with_greedy_policy():
+    """A greedy 'point toward goal' policy must REACH the goal in the open scenario.
 
-    Note: with cfg.v_max=0.1 m/s and 150 max steps × dt_rl=0.5s, theoretical
-    max distance ≈ 7.5m — barely covers the sampled start-goal distance range.
-    So we test PROGRESS rather than full goal reach; a robust environment
-    should at least halve the distance in an obstacle-sparse scenario.
+    Reachability budget: v_max=0.3 m/s, dt_rl=0.5s, 150 steps → single-axis reach
+    ≈ 0.3×0.5×150 = 22.5m, comfortably above the 6-10m start-goal range. If this
+    ever fails, the reachability params (v_max / dt_rl / max_episode_steps vs
+    start_distance_range) are misconfigured — that's the exact bug that produced
+    SR≈3% at Gate G1. Keep this assertion strict.
     """
     env = FormationEnv(action_type="hafi_3d", scenario_mode="open", seed=42)
     obs, _ = env.reset()
     initial_dist = float(np.linalg.norm(env.positions.mean(axis=0) - env.goal))
     max_steps = env.cfg.max_episode_steps
 
-    final_dist = initial_dist
     for step in range(max_steps):
         center = env.positions.mean(axis=0)
         goal_vec = env.goal - center
@@ -154,20 +154,17 @@ def test_open_scenario_makes_progress_with_greedy_policy():
         dx, dy = goal_vec / gn
         action = np.array([dx, dy, 0.0], dtype=np.float32)
         _, _, terminated, truncated, info = env.step(action)
-        final_dist = info["dist_to_goal"]
         if info["success"]:
-            return  # early success is best case
+            return  # reached the goal — success
         if terminated and not info["success"]:
             pytest.fail(f"Collided in open scenario at step {step}")
         if truncated:
             break
 
-    # Not requiring full completion — checking that MPC produces motion.
-    progress = initial_dist - final_dist
-    assert progress > 0.5 * initial_dist, (
-        f"Insufficient progress: initial dist={initial_dist:.2f}, "
-        f"final dist={final_dist:.2f}, delta={progress:.2f} "
-        f"(expected > {0.5 * initial_dist:.2f})"
+    pytest.fail(
+        f"Greedy policy failed to reach goal in open scenario: "
+        f"initial dist={initial_dist:.2f}m, final dist={info['dist_to_goal']:.2f}m "
+        f"after {step + 1} steps. Check reachability params (v_max/dt_rl/max_episode_steps)."
     )
 
 
