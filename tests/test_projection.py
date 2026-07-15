@@ -79,8 +79,13 @@ def test_np_projection_respects_arena_bounds():
         assert -1.0 + 0.18 <= ref[1] <= 1.0 - 0.18 + 1e-9
 
 
-def test_np_projection_gamma_floor():
-    # Subgoal itself sits inside the obstacle → nothing feasible, return floor.
+def test_np_projection_subgoal_blocked_keeps_full_extent():
+    # Subgoal itself sits inside the obstacle → NO contraction can make the
+    # formation feasible (even a near-point blob at the subgoal collides).
+    # Contracting toward the blocked point would cram every vehicle INTO the
+    # obstacle and stall the centroid, so the projection must instead keep the
+    # formation at full extent (gamma=1.0) and let per-vehicle MPC flow around.
+    # Steering the subgoal clear is the policy's job, not the projection's.
     offsets = np.array([[0.5, 0.0], [-0.5, 0.0], [0.0, 0.5]])
     subgoal = np.array([0.0, 0.0])
     obstacles = [(np.array([0.0, 0.0]), 1.0)]  # huge obstacle over subgoal
@@ -88,8 +93,9 @@ def test_np_projection_gamma_floor():
         offsets, subgoal, obstacles,
         vehicle_radius=0.18, d_safe=0.15, gamma_min=0.2, gamma_steps=6,
     )
-    assert active is True
-    assert gamma == pytest.approx(0.2)
+    assert gamma == pytest.approx(1.0)
+    assert active is False
+    assert np.allclose(out, offsets)
 
 
 # ---------------------------------------------------------------------------

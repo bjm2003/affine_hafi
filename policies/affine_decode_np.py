@@ -143,8 +143,18 @@ def project_affine_offsets_np(
         if _feasible(g):
             return g * affine_offsets, float(g), bool(g < 1.0 - 1e-9)
 
-    # No grid point feasible (subgoal itself likely blocked) — best effort.
-    return gamma_min * affine_offsets, float(gamma_min), True
+    # No grid point feasible => even a near-point formation (gamma_min) at the
+    # subgoal collides, i.e. the SUBGOAL ITSELF is blocked. Contracting toward a
+    # blocked point is counterproductive: it crams every vehicle INTO the
+    # obstacle clearance zone, producing a stuck "blob" that MPC (correctly)
+    # refuses to advance -> the centroid stalls. Keeping the formation at full
+    # extent (gamma=1.0) instead lets per-vehicle MPC flow around a point
+    # obstacle, matching HAFI-baseline behavior. Steering the subgoal clear is
+    # the policy's job; the projection must not sabotage the formation when the
+    # policy points at an obstacle. (Contraction only helps when the subgoal is
+    # clear but the formation EXTENT won't fit -- that case yields a feasible
+    # intermediate gamma above and never reaches this fallback.)
+    return affine_offsets, 1.0, False
 
 
 def effective_isotropic_scale(z: np.ndarray, cfg) -> float:
