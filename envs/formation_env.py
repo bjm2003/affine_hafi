@@ -343,10 +343,17 @@ class FormationEnv(gym.Env):
             # Subgoal: same offset-based rule as HAFI (radius R0 = cfg.R0)
             subgoal_offset = self.cfg.R0 * np.array([dx, dy], dtype=np.float64)
             dist_to_goal = float(np.linalg.norm(center - self.goal))
+            carrot = center + subgoal_offset
+            band_outer = self.cfg.goal_homing_band * self.cfg.R0
             if dist_to_goal < self.cfg.R0:
                 subgoal_raw = self.goal.copy()
+            elif dist_to_goal < band_outer:
+                # Blend carrot toward the true goal (mirror of leader_node): kills
+                # the R0 limit cycle on the final approach for imperfect headings.
+                w = (dist_to_goal - self.cfg.R0) / (band_outer - self.cfg.R0)
+                subgoal_raw = (1.0 - w) * self.goal + w * carrot
             else:
-                subgoal_raw = center + subgoal_offset
+                subgoal_raw = carrot
             if self.last_subgoal is None:
                 subgoal = subgoal_raw
             else:

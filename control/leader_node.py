@@ -31,12 +31,20 @@ class LeaderNode:
     ) -> Tuple[ReferencePacket, np.ndarray]:
         """Create leader reference packet and updated smoothed subgoal."""
         subgoal_offset = self.cfg.R0 * np.array([dx, dy], dtype=np.float64)
-        dist_to_goal = np.linalg.norm(center_estimate - goal)
+        dist_to_goal = float(np.linalg.norm(center_estimate - goal))
+        carrot = center_estimate + subgoal_offset
+        band_outer = self.cfg.goal_homing_band * self.cfg.R0
 
         if dist_to_goal < self.cfg.R0:
             p_c_ref_raw = goal.copy()
+        elif dist_to_goal < band_outer:
+            # Blend carrot toward the true goal on the final approach so an
+            # imperfect heading can't trap the centroid in a limit cycle at
+            # radius R0 (w=0 at the R0 snap edge → goal, w=1 at band_outer → carrot).
+            w = (dist_to_goal - self.cfg.R0) / (band_outer - self.cfg.R0)
+            p_c_ref_raw = (1.0 - w) * goal + w * carrot
         else:
-            p_c_ref_raw = center_estimate + subgoal_offset
+            p_c_ref_raw = carrot
 
         if last_subgoal is None:
             p_c_ref = p_c_ref_raw.copy()
