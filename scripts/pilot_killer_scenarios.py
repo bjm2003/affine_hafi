@@ -70,7 +70,11 @@ class RandomAgent:
 
 
 def _action_type(method: str) -> str:
-    return "hafi_3d" if method == "hafi_baseline" else "affine_6d"
+    # Classical IAPF is a drop-in high-level over the same MPC as HAFI → hafi_3d.
+    if method in ("hafi_baseline", "iapf"):
+        return "hafi_3d"
+    # affine_hafi (learned) and geometric_affine (classical) both emit affine_6d.
+    return "affine_6d"
 
 
 def build_env(
@@ -89,8 +93,16 @@ def build_env(
     )
 
 
-def load_agent(ckpt: Optional[str], env: FormationEnv, seed: int):
-    """Return an SB3 model if a checkpoint is given, else a RandomAgent."""
+def load_agent(method: str, ckpt: Optional[str], env: FormationEnv, seed: int, cfg: Config):
+    """Return the agent for a cell: classical IAPF/geometric, SB3 model, or Random."""
+    if method == "iapf":
+        from baselines import IAPFAgent
+        print(f"    classical IAPF controller (privileged obstacle map, no checkpoint)")
+        return IAPFAgent(cfg=cfg, env=env)
+    if method == "geometric_affine":
+        from baselines import GeometricAffineAgent
+        print(f"    geometric affine controller (privileged obstacle map, no checkpoint)")
+        return GeometricAffineAgent(cfg=cfg, env=env)
     if ckpt is None:
         print(f"    [warn] no checkpoint → using RandomAgent (harness smoke only)")
         return RandomAgent(env.action_space, seed=seed)
@@ -110,7 +122,7 @@ def run_cell(
 ) -> Dict[str, Any]:
     """Run one (method, scenario) cell and return summarized metrics."""
     env = build_env(method, scenario, enable_projection, cfg, seed=seed_base)
-    agent = load_agent(ckpt, env, seed=seed_base)
+    agent = load_agent(method, ckpt, env, seed=seed_base, cfg=cfg)
     records = run_batch(
         env, agent,
         n_episodes=n_trials,
@@ -161,6 +173,24 @@ def run_compare(args, cfg: Config) -> Dict[str, Any]:
             "affine_feas": affine["MPC_feasibility"],
         }
 
+        if args.with_iapf:
+            print("  IAPF (classical, proj OFF):")
+            iapf = run_cell("iapf", scen, None,
+                            enable_projection=False, n_trials=args.n_trials,
+                            seed_base=seed, cfg=cfg)
+            row["iapf_SR"] = iapf["SR"]
+            row["iapf_CR"] = iapf["CR"]
+
+        if args.with_geometric:
+            # Classical affine: same affine_6d pipeline as the learned method,
+            # projection ON, so the comparison isolates learned vs hand intention.
+            print("  Geometric affine (classical, proj ON):")
+            geom = run_cell("geometric_affine", scen, None,
+                            enable_projection=True, n_trials=args.n_trials,
+                            seed_base=seed, cfg=cfg)
+            row["geom_SR"] = geom["SR"]
+            row["geom_CR"] = geom["CR"]
+
         if args.proj_ablation:
             print("  Affine (proj OFF, ablation):")
             affine_np = run_cell("affine_hafi", scen, args.affine_ckpt,
@@ -174,21 +204,25 @@ def run_compare(args, cfg: Config) -> Dict[str, Any]:
     mean_gap = float(np.mean(gaps)) if gaps else 0.0
 
     # ---- print table ----
-    print("\n" + "=" * 78)
-    print(f"{'scenario':<22} {'HAFI SR':>8} {'Aff SR':>8} {'gap':>7} "
+    print("\n" + "=" * 90)
+    iapf_hdr = f"{'IAPF SR':>8} " if args.with_iapf else ""
+    geom_hdr = f"{'Geom SR':>8} " if args.with_geometric else ""
+    print(f"{'scenario':<22} {iapf_hdr}{geom_hdr}{'HAFI SR':>8} {'Aff SR':>8} {'gap':>7} "
           f"{'Aff feas':>9}")
-    print("-" * 78)
+    print("-" * 90)
     for r in rows:
-        print(f"{r['scenario']:<22} {r['hafi_SR']*100:>7.1f}% "
+        iapf_cell = f"{r['iapf_SR']*100:>7.1f}% " if args.with_iapf else ""
+        geom_cell = f"{r['geom_SR']*100:>7.1f}% " if args.with_geometric else ""
+        print(f"{r['scenario']:<22} {iapf_cell}{geom_cell}{r['hafi_SR']*100:>7.1f}% "
               f"{r['affine_SR']*100:>7.1f}% {r['gap']*100:>+6.1f}% "
               f"{r['affine_feas']*100:>8.1f}%")
-    print("-" * 78)
+    print("-" * 90)
     print(f"{'MEAN GAP':<22} {'':>8} {'':>8} {mean_gap*100:>+6.1f}%")
     if args.proj_ablation:
         print("\nC2 ablation (projection SR gain, affine ON − OFF):")
         for r in rows:
             print(f"  {r['scenario']:<22} {r.get('proj_SR_gain', 0.0)*100:>+6.1f}%")
-    print("=" * 78)
+    print("=" * 90)
     print(f"Gate G2 verdict: {verdict(mean_gap)}")
     print("=" * 78)
 
@@ -197,12 +231,19 @@ def run_compare(args, cfg: Config) -> Dict[str, Any]:
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--method", choices=["hafi_baseline", "affine_hafi"], default=None)
+    p.add_argument("--method", choices=["hafi_baseline", "affine_hafi", "iapf",
+                                         "geometric_affine"], default=None)
     p.add_argument("--scenario", choices=KILLER_SCENARIOS, default=None)
     p.add_argument("--scenarios", nargs="*", choices=KILLER_SCENARIOS, default=None,
                    help="Subset of killer scenarios for --compare (default: all 4)")
     p.add_argument("--compare", action="store_true",
                    help="Run HAFI vs Affine over all killer scenarios + Gate G2 verdict")
+    p.add_argument("--with_iapf", action="store_true",
+                   help="Also run the classical IAPF baseline as a reference column "
+                        "(does not affect the Gate G2 gap/verdict)")
+    p.add_argument("--with_geometric", action="store_true",
+                   help="Also run the classical geometric-affine baseline as a reference "
+                        "column (does not affect the Gate G2 gap/verdict)")
     p.add_argument("--proj_ablation", action="store_true",
                    help="Also run affine with projection OFF (C2 ablation)")
     p.add_argument("--hafi_ckpt", type=str, default=None)
@@ -228,7 +269,10 @@ def main():
             print("Provide --compare, or both --method and --scenario.")
             return
         ckpt = args.hafi_ckpt if args.method == "hafi_baseline" else args.affine_ckpt
-        enable_proj = args.method == "affine_hafi"
+        if args.method in ("iapf", "geometric_affine"):
+            ckpt = None
+        # Affine pipeline (learned or geometric) runs with the C2 projection ON.
+        enable_proj = args.method in ("affine_hafi", "geometric_affine")
         m = run_cell(args.method, args.scenario, ckpt, enable_proj,
                      args.n_trials, args.seed, cfg)
         print(json.dumps(m, indent=2))
