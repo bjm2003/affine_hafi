@@ -77,7 +77,7 @@ class Config:
     v2v_max_hold_steps: int = 5
 
     # ===================== 缩放 =====================
-    s_min: float = 0.50                # 最小缩放因子 (0.65→0.50: 允许更小编队通过窄缝)
+    s_min: float = 0.65                # 最小缩放因子 (0.64=MPC车间约束下限: d_form*s_min≥2r_v+d_safe=0.51)
     s_max: float = 1.5                # 最大缩放因子
     max_delta_s: float = 0.5       # 每 RL 步最大缩放变化量 (与 20260419_194200 对齐)
 
