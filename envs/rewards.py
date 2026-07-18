@@ -50,6 +50,8 @@ def compute_reward(
     affine_offsets: Optional[np.ndarray] = None,  # (N, 2) transformed offsets (for entropy)
     entropy_weight: float = 0.0,
     entropy_eps: float = 1e-4,
+    affine_action: Optional[np.ndarray] = None,   # (6,) raw affine z (for deform reg)
+    clearance: Optional[float] = None,            # free space around formation (m)
 ) -> Tuple[float, Dict[str, float]]:
     """Return (total_reward, weighted_component_dict)."""
 
@@ -112,8 +114,51 @@ def compute_reward(
         # penalize by subtracting from reward
         components["entropy"] = -float(entropy_weight) * ent
 
+    # ============ Optional: clearance-modulated deformation regularizer ============
+    # Penalize UNNEEDED deformation: anisotropy/shear/rotation are cheap in tight
+    # spots (clearance small) but should collapse to isotropy in open space
+    # (clearance large). Directly attacks the observed degenerate saturation where
+    # the policy pins anisotropy/rotation at the action-space corner everywhere.
+    w_deform = float(getattr(cfg, "w_deform_reg", 0.0))
+    if w_deform > 0.0 and affine_action is not None and clearance is not None:
+        components["deform_reg"] = -w_deform * deformation_penalty(
+            affine_action, float(clearance), cfg,
+        )
+
     total = float(sum(components.values()))
     return total, components
+
+
+def deformation_penalty(z: np.ndarray, clearance: float, cfg) -> float:
+    """Non-negative penalty for deforming away from isotropy, gated by clearance.
+
+    Decodes the affine action to (theta, s_x, s_y, kappa) using the same formula
+    as policies/affine_decode_np.decode_affine_action_np, normalizes each free
+    DOF to [0, 1], and scales the squared magnitude by a clearance gate:
+
+        gate = clip((clearance - tight) / (open - tight), 0, 1)
+             = 0 when clearance <= tight  (tight passage → deformation allowed)
+             = 1 when clearance >= open   (open space   → full penalty)
+
+    Returns 0 when the policy stays isotropic (s_x==s_y, kappa==0, theta==0),
+    regardless of clearance.
+    """
+    z = np.asarray(z, dtype=np.float64).reshape(-1)
+    theta = float(np.clip(z[2], -1.0, 1.0)) * float(cfg.affine_theta_max)
+    s_x = cfg.s_min + (float(np.clip(z[3], -1.0, 1.0)) + 1.0) * 0.5 * (cfg.s_max - cfg.s_min)
+    s_y = cfg.s_min + (float(np.clip(z[4], -1.0, 1.0)) + 1.0) * 0.5 * (cfg.s_max - cfg.s_min)
+    kappa = float(np.clip(z[5], -1.0, 1.0)) * float(cfg.affine_kappa_max)
+
+    aniso = abs(s_x - s_y) / max(cfg.s_max - cfg.s_min, 1e-6)
+    shear = abs(kappa) / max(float(cfg.affine_kappa_max), 1e-6)
+    rot = abs(theta) / max(float(cfg.affine_theta_max), 1e-6)
+    deform = aniso ** 2 + shear ** 2 + rot ** 2
+
+    tight = float(cfg.deform_clearance_tight)
+    open_c = float(cfg.deform_clearance_open)
+    gate = (clearance - tight) / max(open_c - tight, 1e-6)
+    gate = float(np.clip(gate, 0.0, 1.0))
+    return gate * deform
 
 
 def formation_entropy_reg(

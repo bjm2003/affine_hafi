@@ -1,0 +1,91 @@
+# Retrain config: Affine Formation Manifold + clearance-modulated deform regularizer
+# Clone of affine_hafi.yaml with the deformation regularizer ENABLED.
+#
+# WHY THIS RUN EXISTS
+# The plain affine run (run_20260717_164321_affine) beat HAFI on aggregate but
+# affine_usage_probe.py showed DEGENERATE SATURATION: the policy pinned anisotropy
+# (~0.82 of 0.85 max) and rotation (~86°) in EVERY scenario, including open, and
+# the deformation was UNCORRELATED with success. So the win could not be attributed
+# to purposeful affine deformation. Root cause: the 4 extra affine DOF were
+# unpenalized → collapsed to the action-space corner.
+#
+# THE FIX (this config): penalize deforming away from isotropy, GATED by clearance.
+# Open space (clearance large) → full penalty → formation should stay a clean
+# triangle. Tight passage (clearance small) → penalty ~0 → deformation allowed.
+# Goal: force scenario-TRIGGERED deformation. If it works, affine_usage_probe should
+# show open ≈ isotropic, corridors deform → true "affine must be learned" story.
+
+method:
+  name: affine_hafi_deformreg
+  action_type: affine_6d          # 6D (dx, dy, theta, s_x, s_y, kappa)
+
+  affine_theta_max: 1.5708        # ±90° rotation
+  affine_kappa_max: 0.5           # shear coefficient bound
+
+  enable_projection: true
+  projection_clearance: 0.05
+  projection_gamma_min: 0.2
+  projection_gamma_steps: 6
+
+  formation_entropy_weight: 0.0   # rank-collapse guard, unused (sliver != rank collapse)
+
+# Environment
+env:
+  n_vehicles: 3
+  d_form: 0.8
+  # --- clearance-modulated deformation regularizer (the whole point of this run) ---
+  w_deform_reg: 0.5               # penalty weight; 0 = off. Tunable — if open still
+                                  # deforms after this run, raise to 1.0; if corridors
+                                  # stop deforming (SR drops on s/z_corridor), lower.
+  deform_clearance_tight: 0.30    # clearance <= this: gate=0, deformation free (in a gap)
+  deform_clearance_open: 0.90     # clearance >= this: gate=1, full penalty (open space)
+  scenario_probs:
+    open: 0.25
+    corridor: 0.15
+    s_corridor: 0.20
+    z_corridor: 0.20
+    u_trap: 0.00                  # EXCLUDED: privileged affine also scores 0% here —
+                                  # concave dead-end is a PLANNING problem, not a shape
+                                  # DOF (u_trap_affine_probe.py). Not an affine killer.
+    dynamic: 0.20
+
+# PPO hyperparams (aligned with HAFI config.py)
+ppo:
+  total_timesteps: 3_000_000
+  n_envs: 12
+  n_steps: 8192
+  batch_size: 2048
+  n_epochs: 4
+  lr: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+
+# Curriculum (matches config.py fields)
+curriculum:
+  enabled: true
+  phase1_probs: [0.50, 0.10, 0.10, 0.10, 0.00, 0.20]
+  phase2_probs: [0.15, 0.15, 0.25, 0.25, 0.00, 0.20]
+  switch_step: 500_000
+  corridor_gap_start: 1.0
+  corridor_gap_target: 0.70
+  corridor_gap_warmup_frac: 0.05
+  corridor_gap_anneal_frac: 0.40
+
+# Failure replay
+failure_replay:
+  enabled: true
+  max_prob: 0.3
+  sr_low: 0.5
+  sr_high: 0.8
+  buffer_size: 200
+
+# Logging
+logging:
+  wandb: true
+  wandb_project: affine_hafi
+  wandb_entity:
+  eval_freq: 50_000
+  video_freq: 100_000
+  checkpoint_freq: 100_000

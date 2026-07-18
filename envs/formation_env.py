@@ -269,6 +269,8 @@ class FormationEnv(gym.Env):
         truncated = self.step_count + 1 >= self.cfg.max_episode_steps
 
         # ============ 5. Reward ============
+        deform_action = action if self.action_type == "affine_6d" else None
+        clearance = self._formation_clearance() if deform_action is not None else None
         reward, components = compute_reward(
             positions=self.positions,
             prev_center=self.prev_center,
@@ -281,6 +283,8 @@ class FormationEnv(gym.Env):
             scenario_name=self._current_scenario_name,
             affine_offsets=self.last_affine_offsets,
             entropy_weight=self.entropy_weight,
+            affine_action=deform_action,
+            clearance=clearance,
         )
 
         # ============ 6. Bookkeeping ============
@@ -606,6 +610,27 @@ class FormationEnv(gym.Env):
                 if np.linalg.norm(self.positions[i] - self.positions[j]) < 2 * r_v:
                     return True
         return False
+
+    def _formation_clearance(self) -> float:
+        """Minimum free space between any robot and the nearest obstacle surface (m).
+
+        Small in tight passages (corridor walls close), large/capped in open space.
+        Used to gate the deformation regularizer: deform only when it's tight.
+        Capped at lidar_max_dist so "no obstacle in sight" reads as fully open.
+        """
+        cap = float(self.cfg.lidar_max_dist)
+        min_clear = cap
+        for i in range(self.cfg.n_vehicles):
+            p = self.positions[i]
+            for o in self.static_obs:
+                d = float(np.linalg.norm(p - o.pos)) - o.radius
+                if d < min_clear:
+                    min_clear = d
+            for o in self.dynamic_obs:
+                d = float(np.linalg.norm(p - o.pos)) - o.radius
+                if d < min_clear:
+                    min_clear = d
+        return max(min_clear, 0.0)
 
     def render(self):
         # TODO: matplotlib visualization for debug + eval videos

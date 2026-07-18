@@ -90,6 +90,15 @@ class Config:
     affine_theta_max: float = np.pi / 2   # 旋转边界 (±rad)
     affine_kappa_max: float = 0.5         # 剪切系数边界
     formation_entropy_weight: float = 0.0 # 编队熵正则权重 (0=关, 观察到坍缩再开)
+    # --- 间隙调制变形正则 (治退化饱和: open 也把 aniso/rot 拉满) ---
+    # 惩罚 "无谓变形": 周围空旷(clearance 大)时偏离各向同性重罚; 钻窄缝(clearance 小)时放行。
+    # 逼迫策略按需变形, 而非到处钉死畸形。0=关 (默认, 不改变现有行为)。
+    # penalty = w_deform_reg · gate(clearance) · (â² + k̂² + r̂²)
+    #   â=|s_x-s_y|/(s_max-s_min), k̂=|kappa|/kappa_max, r̂=|theta|/theta_max  (∈[0,1])
+    #   gate = clip((clearance - tight)/(open - tight), 0, 1)
+    w_deform_reg: float = 0.0             # 变形正则权重 (0=关)
+    deform_clearance_tight: float = 0.30  # clearance ≤ 此值: gate=0 (完全放行变形, 窄道内)
+    deform_clearance_open: float = 0.90   # clearance ≥ 此值: gate=1 (满额惩罚, 空旷)
     # 可行性保持投影 (C2): 各向同性收缩使每车参考落在无碰撞可行域内
     enable_projection: bool = True        # 消融开关 (C2 on/off)
     projection_clearance: float = 0.05    # 参考点相对障碍的额外余量 (m), 叠加在 d_safe 上
